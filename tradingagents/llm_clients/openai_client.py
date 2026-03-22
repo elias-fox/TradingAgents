@@ -54,7 +54,7 @@ class OpenAIClient(BaseLLMClient):
             if api_key:
                 llm_kwargs["api_key"] = api_key
         elif self.provider == "ollama":
-            llm_kwargs["base_url"] = "http://localhost:11434/v1"
+            llm_kwargs["base_url"] = "http://localhost:1234/v1"
             llm_kwargs["api_key"] = "ollama"  # Ollama doesn't require auth
         elif self.base_url:
             llm_kwargs["base_url"] = self.base_url
