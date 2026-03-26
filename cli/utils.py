@@ -160,8 +160,9 @@ def select_shallow_thinking_agent(provider) -> str:
             ("Z.AI GLM 4.5 Air (free)", "z-ai/glm-4.5-air:free"),
         ],
         "ollama": [
-            ("Qwen3:latest (8B, local)", "qwen3:latest"),
-            ("GPT-OSS:latest (20B, local)", "gpt-oss:latest"),
+            ("Qwen3.5 (9B, local)", "qwen/qwen3.5-9b"),
+            ("GPT-OSS:latest (20B, local)", "openai/gpt-oss-20b"),
+            ("Qwen3.5 (35B, local)", "qwen/qwen3.5-35b-a3b"),
             ("GLM-4.7-Flash:latest (30B, local)", "glm-4.7-flash:latest"),
         ],
     }
@@ -228,8 +229,9 @@ def select_deep_thinking_agent(provider) -> str:
         ],
         "ollama": [
             ("GLM-4.7-Flash:latest (30B, local)", "glm-4.7-flash:latest"),
-            ("GPT-OSS:latest (20B, local)", "gpt-oss:latest"),
-            ("Qwen3:latest (8B, local)", "qwen3:latest"),
+            ("Qwen3.5 (35B, local)", "qwen/qwen3.5-35b-a3b"),
+            ("GPT-OSS:latest (20B, local)", "openai/gpt-oss-20b"),
+            ("Qwen3.5 (9B, local)", "qwen/qwen3.5-9b"),
         ],
     }
 
