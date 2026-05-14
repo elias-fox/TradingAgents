@@ -237,7 +237,7 @@ def select_llm_provider() -> tuple[str, str | None]:
     # Ollama users can point at a remote ollama-serve via OLLAMA_BASE_URL
     # (convention from the broader Ollama ecosystem); falls back to the
     # localhost default when unset.
-    ollama_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+    ollama_url = os.environ.get("OLLAMA_BASE_URL") or "http://localhost:1234/v1"
     # (display_name, provider_key, base_url)
     PROVIDERS = [
         ("OpenAI", "openai", "https://api.openai.com/v1"),
