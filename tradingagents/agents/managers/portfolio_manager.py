@@ -46,11 +46,16 @@ def create_portfolio_manager(llm):
 ---
 
 **Rating Scale** (use exactly one):
-- **Buy**: Strong conviction to enter or add to position
-- **Overweight**: Favorable outlook, gradually increase exposure
-- **Hold**: Maintain current position, no action needed
-- **Underweight**: Reduce exposure, take partial profits
-- **Sell**: Exit position or avoid entry
+- **Buy**: Strong conviction to enter or add to a long position
+- **Overweight**: Favorable outlook; gradually increase long exposure
+- **Hold**: Maintain current position; no new entry or exit
+- **Underweight**: Reduce exposure; trim the position
+- **Sell**: Exit long or initiate a short position
+
+For Buy / Overweight: provide entry_range, position_size_pct, stop_loss, and price_target.
+For Sell: provide stop_loss and price_target; add short_entry_range and short_position_size_pct if initiating a short.
+For Hold: provide review_trigger and re_evaluate_after.
+Always provide confidence (1–100).
 
 **Context:**
 - Research Manager's investment plan: **{research_plan}**
@@ -63,13 +68,15 @@ def create_portfolio_manager(llm):
 
 Be decisive and ground every conclusion in specific evidence from the analysts.{get_language_instruction()}"""
 
-        final_trade_decision = invoke_structured_or_freetext(
+        final_trade_decision, decision_obj = invoke_structured_or_freetext(
             structured_llm,
             llm,
             prompt,
             render_pm_decision,
             "Portfolio Manager",
         )
+
+        portfolio_decision = decision_obj.model_dump() if decision_obj is not None else None
 
         new_risk_debate_state = {
             "judge_decision": final_trade_decision,
@@ -87,6 +94,7 @@ Be decisive and ground every conclusion in specific evidence from the analysts.{
         return {
             "risk_debate_state": new_risk_debate_state,
             "final_trade_decision": final_trade_decision,
+            "portfolio_decision": portfolio_decision,
         }
 
     return portfolio_manager_node

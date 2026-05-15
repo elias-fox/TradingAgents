@@ -5,7 +5,7 @@ import pandas as pd
 from unittest.mock import MagicMock, patch
 
 from tradingagents.agents.utils.memory import TradingMemoryLog
-from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating
+from tradingagents.agents.schemas import PortfolioDecision, PortfolioRating, PriceRange
 from tradingagents.graph.reflection import Reflector
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.graph.propagation import Propagator
@@ -90,8 +90,11 @@ def _structured_pm_llm(captured: dict, decision: PortfolioDecision | None = None
     if decision is None:
         decision = PortfolioDecision(
             rating=PortfolioRating.HOLD,
+            confidence=55,
             executive_summary="Hold the position; await catalyst.",
             investment_thesis="Balanced view; neither side carried the debate.",
+            review_trigger="Price breaks $180 support or earnings miss > 10%.",
+            re_evaluate_after="Q3 2024 earnings release",
         )
     structured = MagicMock()
     structured.invoke.side_effect = lambda prompt: (
@@ -701,20 +704,34 @@ class TestPortfolioManagerInjection:
         captured = {}
         decision = PortfolioDecision(
             rating=PortfolioRating.OVERWEIGHT,
+            confidence=78,
             executive_summary="Build position gradually over the next two weeks.",
             investment_thesis="AI capex cycle remains intact; institutional flows constructive.",
             price_target=215.0,
             time_horizon="3-6 months",
+            stop_loss=182.0,
+            entry_range=PriceRange(low=190.0, high=198.0),
+            position_size_pct=5.0,
         )
         llm = _structured_pm_llm(captured, decision)
         pm_node = create_portfolio_manager(llm)
         result = pm_node(_make_pm_state())
         md = result["final_trade_decision"]
         assert "**Rating**: Overweight" in md
+        assert "**Confidence**: 78/100" in md
         assert "**Executive Summary**: Build position gradually" in md
         assert "**Investment Thesis**: AI capex cycle" in md
         assert "**Price Target**: 215.0" in md
         assert "**Time Horizon**: 3-6 months" in md
+        assert "**Stop Loss**: 182.0" in md
+        assert "**Entry Range**: 190.0" in md
+        assert "**Position Size**: 5.0%" in md
+        pd = result["portfolio_decision"]
+        assert pd is not None
+        assert pd["rating"] == "Overweight"
+        assert pd["confidence"] == 78
+        assert pd["stop_loss"] == 182.0
+        assert pd["entry_range"] == {"low": 190.0, "high": 198.0}
 
     def test_pm_falls_back_to_freetext_when_structured_unavailable(self):
         """If a provider does not support with_structured_output, the agent

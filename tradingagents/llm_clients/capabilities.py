@@ -76,6 +76,13 @@ _MINIMAX_THINKING = ModelCapabilities(
     preferred_structured_method="function_calling",
 )
 
+_QWEN = ModelCapabilities(
+    supports_tool_choice=False,
+    supports_json_mode=True,
+    supports_json_schema=False,
+    preferred_structured_method="function_calling",
+)
+
 _DEFAULT = ModelCapabilities(
     supports_tool_choice=True,
     supports_json_mode=True,
@@ -103,10 +110,15 @@ _BY_ID: dict[str, ModelCapabilities] = {
 
 # Forward-compat patterns. New ``deepseek-v5-*`` / ``deepseek-reasoner-*``
 # or ``MiniMax-M3*`` variants inherit the thinking-mode quirks automatically.
+# Qwen models (all generations) reject the object form of tool_choice when
+# served via Ollama / LM Studio's OpenAI-compatible layer — same 400 shape
+# as DeepSeek. The tools array still ships, so function_calling works; only
+# the tool_choice object is suppressed.
 _BY_PATTERN: list[tuple[re.Pattern[str], ModelCapabilities]] = [
     (re.compile(r"^deepseek-v\d"), _DEEPSEEK_THINKING),
     (re.compile(r"^deepseek-reasoner"), _DEEPSEEK_THINKING),
     (re.compile(r"^MiniMax-M\d"), _MINIMAX_THINKING),
+    (re.compile(r"(?i)qwen"), _QWEN),
 ]
 
 

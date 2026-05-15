@@ -168,6 +168,13 @@ def render_trader_proposal(proposal: TraderProposal) -> str:
 # ---------------------------------------------------------------------------
 
 
+class PriceRange(BaseModel):
+    """Inclusive price band in the instrument's quote currency."""
+
+    low: float
+    high: float
+
+
 class PortfolioDecision(BaseModel):
     """Structured output produced by the Portfolio Manager.
 
@@ -175,54 +182,159 @@ class PortfolioDecision(BaseModel):
     extraction pass is required. Field descriptions double as the model's
     output instructions, so the prompt body only needs to convey context and
     the rating-scale guidance.
+
+    Field order follows the logical sequence the LLM should reason through:
+    direction → conviction → narrative → entry → exit → hold conditions.
     """
 
     rating: PortfolioRating = Field(
+        description="The final position rating: Buy / Overweight / Hold / Underweight / Sell.",
+    )
+    confidence: int = Field(
+        ge=1, le=100,
         description=(
-            "The final position rating. Exactly one of Buy / Overweight / Hold / "
-            "Underweight / Sell, picked based on the analysts' debate."
+            "Conviction level 1–100. Set this before filling sizing fields — "
+            "it should inform position size and stop width. "
+            "80+ = strong signal; below 50 = genuinely conflicted evidence."
         ),
     )
     executive_summary: str = Field(
         description=(
-            "A concise action plan covering entry strategy, position sizing, "
-            "key risk levels, and time horizon. Two to four sentences."
+            "2–4 sentence action plan. Reference the entry/exit levels, "
+            "sizing, and the key catalyst that could invalidate the thesis."
         ),
     )
     investment_thesis: str = Field(
         description=(
-            "Detailed reasoning anchored in specific evidence from the analysts' "
-            "debate. If prior lessons are referenced in the prompt context, "
-            "incorporate them; otherwise rely solely on the current analysis."
+            "Detailed reasoning anchored in specific evidence from the analyst debate. "
+            "Incorporate prior memory lessons if present in the prompt context."
+        ),
+    )
+    time_horizon: Optional[str] = Field(
+        default=None,
+        description=(
+            "Recommended holding period e.g. '3–6 months'. "
+            "Required for Buy / Overweight / Underweight / Sell. Omit for Hold."
         ),
     )
     price_target: Optional[float] = Field(
         default=None,
-        description="Optional target price in the instrument's quote currency.",
+        description=(
+            "Primary take-profit price in the instrument's quote currency. "
+            "Required for Buy / Overweight / Sell. Omit for Hold."
+        ),
     )
-    time_horizon: Optional[str] = Field(
+    price_target_2: Optional[float] = Field(
         default=None,
-        description="Optional recommended holding period, e.g. '3-6 months'.",
+        description=(
+            "Stretch (secondary) take-profit target. "
+            "Optional for Buy / Overweight / Sell."
+        ),
+    )
+    stop_loss: Optional[float] = Field(
+        default=None,
+        description=(
+            "Hard stop price to exit and cut the loss. "
+            "For longs (Buy / Overweight): set below entry. "
+            "For shorts (Sell): set above entry. "
+            "Required for Buy / Overweight / Sell. Omit for Hold."
+        ),
+    )
+    trailing_stop_pct: Optional[float] = Field(
+        default=None,
+        ge=0, le=100,
+        description=(
+            "Trailing stop as a percentage from the running peak (longs) "
+            "or trough (shorts), e.g. 8.0 for 8%. "
+            "Optional for Buy / Overweight / Sell."
+        ),
+    )
+    entry_range: Optional[PriceRange] = Field(
+        default=None,
+        description=(
+            "Ideal buy zone (low / high prices). "
+            "Required for Buy / Overweight. Omit otherwise."
+        ),
+    )
+    position_size_pct: Optional[float] = Field(
+        default=None,
+        ge=0, le=100,
+        description=(
+            "Recommended portfolio allocation as a percentage. "
+            "Scale with confidence: high confidence → full size, "
+            "low confidence → half size. "
+            "Required for Buy / Overweight. Omit for Hold / Sell."
+        ),
+    )
+    short_entry_range: Optional[PriceRange] = Field(
+        default=None,
+        description=(
+            "Ideal short-entry zone (low / high prices). "
+            "Required for Sell when initiating a short. Omit otherwise."
+        ),
+    )
+    short_position_size_pct: Optional[float] = Field(
+        default=None,
+        ge=0, le=100,
+        description=(
+            "Short position size as a portfolio percentage. "
+            "Required for Sell when initiating a short. Omit otherwise."
+        ),
+    )
+    review_trigger: Optional[str] = Field(
+        default=None,
+        description=(
+            "Specific, observable condition that would prompt a rating change, "
+            "e.g. 'earnings miss > 10%' or 'price breaks $180 support'. "
+            "Required for Hold. Omit otherwise."
+        ),
+    )
+    re_evaluate_after: Optional[str] = Field(
+        default=None,
+        description=(
+            "Date or catalyst after which to re-assess, "
+            "e.g. 'Q2 2024 earnings release' or '2024-07-15'. "
+            "Required for Hold. Omit otherwise."
+        ),
     )
 
 
 def render_pm_decision(decision: PortfolioDecision) -> str:
     """Render a PortfolioDecision back to the markdown shape the rest of the system expects.
 
-    Memory log, CLI display, and saved report files all read this markdown,
-    so the rendered output preserves the exact section headers (``**Rating**``,
-    ``**Executive Summary**``, ``**Investment Thesis**``) that downstream
-    parsers and the report writers already handle.
+    Memory log, CLI display, and saved report files all read this markdown.
+    ``**Rating**`` is always the first line so ``parse_rating`` can find it
+    without scanning the full document.
     """
     parts = [
         f"**Rating**: {decision.rating.value}",
+        "",
+        f"**Confidence**: {decision.confidence}/100",
         "",
         f"**Executive Summary**: {decision.executive_summary}",
         "",
         f"**Investment Thesis**: {decision.investment_thesis}",
     ]
-    if decision.price_target is not None:
-        parts.extend(["", f"**Price Target**: {decision.price_target}"])
     if decision.time_horizon:
         parts.extend(["", f"**Time Horizon**: {decision.time_horizon}"])
+    if decision.price_target is not None:
+        parts.extend(["", f"**Price Target**: {decision.price_target}"])
+    if decision.price_target_2 is not None:
+        parts.extend(["", f"**Price Target 2**: {decision.price_target_2}"])
+    if decision.stop_loss is not None:
+        parts.extend(["", f"**Stop Loss**: {decision.stop_loss}"])
+    if decision.trailing_stop_pct is not None:
+        parts.extend(["", f"**Trailing Stop**: {decision.trailing_stop_pct}%"])
+    if decision.entry_range is not None:
+        parts.extend(["", f"**Entry Range**: {decision.entry_range.low}–{decision.entry_range.high}"])
+    if decision.position_size_pct is not None:
+        parts.extend(["", f"**Position Size**: {decision.position_size_pct}%"])
+    if decision.short_entry_range is not None:
+        parts.extend(["", f"**Short Entry Range**: {decision.short_entry_range.low}–{decision.short_entry_range.high}"])
+    if decision.short_position_size_pct is not None:
+        parts.extend(["", f"**Short Position Size**: {decision.short_position_size_pct}%"])
+    if decision.review_trigger:
+        parts.extend(["", f"**Review Trigger**: {decision.review_trigger}"])
+    if decision.re_evaluate_after:
+        parts.extend(["", f"**Re-evaluate After**: {decision.re_evaluate_after}"])
     return "\n".join(parts)
