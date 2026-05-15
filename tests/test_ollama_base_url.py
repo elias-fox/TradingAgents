@@ -148,20 +148,46 @@ def test_confirm_endpoint_quiet_on_local_no_port(monkeypatch, capsys):
     assert "Note" not in out  # localhost is fine without explicit port
 
 
-def test_ollama_model_labels_no_local_suffix():
-    """Labels should no longer claim '(local)' since the endpoint is dynamic."""
-    from tradingagents.llm_clients.model_catalog import get_model_options
-    for mode in ("quick", "deep"):
-        labels = [label for label, _ in get_model_options("ollama", mode)]
-        assert all("local" not in label for label in labels), labels
+def test_fetch_ollama_models_parses_response(monkeypatch):
+    """_fetch_ollama_models parses the OpenAI-compatible /models response."""
+    import requests
+    from unittest.mock import MagicMock
+    from cli.utils import _fetch_ollama_models
+
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {
+        "data": [
+            {"id": "llama3.2:latest"},
+            {"id": "qwen2.5:7b"},
+            {"id": "mistral:latest"},
+        ]
+    }
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: mock_resp)
+
+    result = _fetch_ollama_models("http://localhost:1234/v1")
+    # Results are sorted alphabetically and returned as (id, id) tuples
+    assert result == [
+        ("llama3.2:latest", "llama3.2:latest"),
+        ("mistral:latest", "mistral:latest"),
+        ("qwen2.5:7b", "qwen2.5:7b"),
+    ]
 
 
-def test_ollama_offers_custom_model_id():
-    """Ollama users with custom-pulled models can pick 'Custom model ID'."""
-    from tradingagents.llm_clients.model_catalog import get_model_options
-    for mode in ("quick", "deep"):
-        entries = get_model_options("ollama", mode)
-        values = [v for _, v in entries]
-        assert "custom" in values, f"Ollama {mode!r} missing 'custom' option: {entries}"
-        # Custom option is last so it doesn't push the curated defaults off-screen
-        assert values[-1] == "custom", f"'custom' should be last entry: {values}"
+def test_fetch_ollama_models_returns_empty_on_error(monkeypatch, capsys):
+    """_fetch_ollama_models returns [] and prints a warning when unreachable."""
+    import requests
+    from cli.utils import _fetch_ollama_models
+
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: (_ for _ in ()).throw(
+        Exception("Connection refused")
+    ))
+
+    result = _fetch_ollama_models("http://localhost:1234/v1")
+    assert result == []
+
+
+def test_ollama_not_in_static_catalog():
+    """Ollama models are fetched dynamically; no static catalog entry should exist."""
+    from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
+    assert "ollama" not in MODEL_OPTIONS

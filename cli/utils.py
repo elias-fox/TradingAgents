@@ -151,6 +151,49 @@ def _fetch_openrouter_models() -> List[Tuple[str, str]]:
         return []
 
 
+def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
+    """Fetch installed models from a running Ollama server's /models endpoint."""
+    import requests
+    url = base_url.rstrip("/") + "/models"
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
+        ids = sorted(m["id"] for m in models if "id" in m)
+        return [(mid, mid) for mid in ids]
+    except Exception as e:
+        console.print(f"\n[yellow]Could not reach Ollama at {url}: {e}[/yellow]")
+        return []
+
+
+def select_ollama_model(base_url: str, mode: str = "quick") -> str:
+    """Select an installed Ollama model, or enter a custom ID."""
+    models = _fetch_ollama_models(base_url)
+
+    if not models:
+        console.print("[yellow]No models returned — enter a model ID manually.[/yellow]")
+        return _prompt_custom_model_id()
+
+    choices = [questionary.Choice(mid, value=mid) for mid, _ in models]
+    choices.append(questionary.Choice("Custom model ID", value="custom"))
+
+    choice = questionary.select(
+        f"Select Your [{mode.title()}-Thinking LLM Engine]:",
+        choices=choices,
+        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+        style=questionary.Style([
+            ("selected", "fg:magenta noinherit"),
+            ("highlighted", "fg:magenta noinherit"),
+            ("pointer", "fg:magenta noinherit"),
+        ]),
+    ).ask()
+
+    if choice is None or choice == "custom":
+        return _prompt_custom_model_id()
+
+    return choice
+
+
 def select_openrouter_model() -> str:
     """Select an OpenRouter model from the newest available, or enter a custom ID."""
     models = _fetch_openrouter_models()
@@ -186,10 +229,14 @@ def _prompt_custom_model_id() -> str:
     ).ask().strip()
 
 
-def _select_model(provider: str, mode: str) -> str:
+def _select_model(provider: str, mode: str, base_url: Optional[str] = None) -> str:
     """Select a model for the given provider and mode (quick/deep)."""
     if provider.lower() == "openrouter":
         return select_openrouter_model()
+
+    if provider.lower() == "ollama":
+        resolved = base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:1234/v1"
+        return select_ollama_model(resolved, mode)
 
     if provider.lower() == "azure":
         return questionary.text(
@@ -223,14 +270,14 @@ def _select_model(provider: str, mode: str) -> str:
     return choice
 
 
-def select_shallow_thinking_agent(provider) -> str:
+def select_shallow_thinking_agent(provider, base_url: Optional[str] = None) -> str:
     """Select shallow thinking llm engine using an interactive selection."""
-    return _select_model(provider, "quick")
+    return _select_model(provider, "quick", base_url)
 
 
-def select_deep_thinking_agent(provider) -> str:
+def select_deep_thinking_agent(provider, base_url: Optional[str] = None) -> str:
     """Select deep thinking llm engine using an interactive selection."""
-    return _select_model(provider, "deep")
+    return _select_model(provider, "deep", base_url)
 
 def select_llm_provider() -> tuple[str, str | None]:
     """Select the LLM provider and its API endpoint."""

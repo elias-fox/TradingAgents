@@ -578,8 +578,8 @@ def get_user_selections():
             "Step 7: Thinking Agents", "Select your thinking agents for analysis"
         )
     )
-    selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider)
-    selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
+    selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider, backend_url)
+    selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider, backend_url)
 
     # Step 8: Provider-specific thinking configuration
     thinking_level = None
