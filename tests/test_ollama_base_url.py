@@ -179,11 +179,12 @@ def test_fetch_ollama_models_returns_empty_on_error(monkeypatch, capsys):
     import requests
     from cli.utils import _fetch_ollama_models
 
+    _fetch_ollama_models.cache_clear()
     monkeypatch.setattr(requests, "get", lambda *a, **kw: (_ for _ in ()).throw(
         Exception("Connection refused")
     ))
 
-    result = _fetch_ollama_models("http://localhost:1234/v1")
+    result = _fetch_ollama_models("http://unreachable:9999/v1")
     assert result == []
 
 

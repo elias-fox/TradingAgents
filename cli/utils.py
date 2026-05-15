@@ -1,8 +1,10 @@
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict
 
 import questionary
+import requests
 from dotenv import find_dotenv, set_key
 from rich.console import Console
 
@@ -11,6 +13,12 @@ from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.llm_clients.model_catalog import get_model_options
 
 console = Console()
+
+_MAGENTA_SELECT_STYLE = questionary.Style([
+    ("selected", "fg:magenta noinherit"),
+    ("highlighted", "fg:magenta noinherit"),
+    ("pointer", "fg:magenta noinherit"),
+])
 
 TICKER_INPUT_EXAMPLES = "Examples: SPY, CNC.TO, 7203.T, 0700.HK"
 
@@ -138,36 +146,31 @@ def select_research_depth() -> int:
     return choice
 
 
+def _fetch_model_list(url: str, timeout: int = 10) -> list:
+    """GET url and return the 'data' list from the JSON response, or [] on error."""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json().get("data", [])
+    except Exception as e:
+        console.print(f"\n[yellow]Could not fetch models from {url}: {e}[/yellow]")
+        return []
+
+
 def _fetch_openrouter_models() -> List[Tuple[str, str]]:
-    """Fetch available models from the OpenRouter API."""
-    import requests
-    try:
-        resp = requests.get("https://openrouter.ai/api/v1/models", timeout=10)
-        resp.raise_for_status()
-        models = resp.json().get("data", [])
-        return [(m.get("name") or m["id"], m["id"]) for m in models]
-    except Exception as e:
-        console.print(f"\n[yellow]Could not fetch OpenRouter models: {e}[/yellow]")
-        return []
+    models = _fetch_model_list("https://openrouter.ai/api/v1/models")
+    return [(m.get("name") or m["id"], m["id"]) for m in models]
 
 
+@lru_cache(maxsize=8)
 def _fetch_ollama_models(base_url: str) -> List[Tuple[str, str]]:
-    """Fetch installed models from a running Ollama server's /models endpoint."""
-    import requests
     url = base_url.rstrip("/") + "/models"
-    try:
-        resp = requests.get(url, timeout=5)
-        resp.raise_for_status()
-        models = resp.json().get("data", [])
-        ids = sorted(m["id"] for m in models if "id" in m)
-        return [(mid, mid) for mid in ids]
-    except Exception as e:
-        console.print(f"\n[yellow]Could not reach Ollama at {url}: {e}[/yellow]")
-        return []
+    models = _fetch_model_list(url, timeout=5)
+    ids = sorted(m["id"] for m in models if "id" in m)
+    return [(mid, mid) for mid in ids]
 
 
-def select_ollama_model(base_url: str, mode: str = "quick") -> str:
-    """Select an installed Ollama model, or enter a custom ID."""
+def select_ollama_model(base_url: str, mode: str) -> str:
     models = _fetch_ollama_models(base_url)
 
     if not models:
@@ -181,11 +184,7 @@ def select_ollama_model(base_url: str, mode: str = "quick") -> str:
         f"Select Your [{mode.title()}-Thinking LLM Engine]:",
         choices=choices,
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
-        style=questionary.Style([
-            ("selected", "fg:magenta noinherit"),
-            ("highlighted", "fg:magenta noinherit"),
-            ("pointer", "fg:magenta noinherit"),
-        ]),
+        style=_MAGENTA_SELECT_STYLE,
     ).ask()
 
     if choice is None or choice == "custom":
@@ -205,11 +204,7 @@ def select_openrouter_model() -> str:
         "Select OpenRouter Model (latest available):",
         choices=choices,
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
-        style=questionary.Style([
-            ("selected", "fg:magenta noinherit"),
-            ("highlighted", "fg:magenta noinherit"),
-            ("pointer", "fg:magenta noinherit"),
-        ]),
+        style=_MAGENTA_SELECT_STYLE,
     ).ask()
 
     if choice is None or choice == "custom":
@@ -251,13 +246,7 @@ def _select_model(provider: str, mode: str, base_url: Optional[str] = None) -> s
             for display, value in get_model_options(provider, mode)
         ],
         instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
-        style=questionary.Style(
-            [
-                ("selected", "fg:magenta noinherit"),
-                ("highlighted", "fg:magenta noinherit"),
-                ("pointer", "fg:magenta noinherit"),
-            ]
-        ),
+        style=_MAGENTA_SELECT_STYLE,
     ).ask()
 
     if choice is None:
@@ -271,12 +260,10 @@ def _select_model(provider: str, mode: str, base_url: Optional[str] = None) -> s
 
 
 def select_shallow_thinking_agent(provider, base_url: Optional[str] = None) -> str:
-    """Select shallow thinking llm engine using an interactive selection."""
     return _select_model(provider, "quick", base_url)
 
 
 def select_deep_thinking_agent(provider, base_url: Optional[str] = None) -> str:
-    """Select deep thinking llm engine using an interactive selection."""
     return _select_model(provider, "deep", base_url)
 
 def select_llm_provider() -> tuple[str, str | None]:
